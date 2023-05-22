@@ -1,0 +1,596 @@
+options
+{
+  STATIC = false;
+
+  LOOKAHEAD= 3;
+  FORCE_LA_CHECK = true;
+}
+
+PARSER_BEGIN(Calculator)
+import java.io.PrintStream;
+import java.util.HashMap;
+
+public class Calculator
+{
+  // SymbolMap where the variables are stored
+  HashMap < String, String > SymbolMap = new HashMap < String, String > ();
+
+  public static void main(String [] args) throws ParseException, TokenMgrError, NumberFormatException
+  {
+    while (true)
+    {
+      // Parse sentences first
+      Calculator parser = new Calculator(System.in);
+      System.out.println("input:");
+      try
+      {
+        // Start calculation
+        parser.Start();
+        parser.ReInit(System.in);
+      }
+      catch (Exception e)
+      {
+        System.out.println(e.getMessage());
+        parser.ReInit(System.in);
+      }
+      catch (Error e)
+      {
+        System.out.println("Oops.");
+        System.out.println(e.getMessage());
+        break;
+      }
+    }
+  }
+}
+
+PARSER_END(Calculator)
+
+SKIP :
+{
+  " "
+| "\t"
+}
+
+TOKEN :
+{
+  < EOL :
+    "\n"
+  | "\r"
+  | "\r\n" >
+}
+
+TOKEN :
+{
+  < PLUS : "+" >
+| < MINUS : "-" >
+| < MULTIPLY : "*" >
+| < DIVIDE : "/" >
+| < POW : "**" >
+| < FALSE : "False" >
+| < TRUE : "True" >
+| < EEQUALS : "==" >
+| < EQUALS : "=" >
+| < COLON : ":" >
+| < BIGGER : ">" >
+| < SMALLER : "<" >
+| < MORE_EQUAL : ">=" >
+| < LESS_EQUAL : "<=" >
+| < NOT : "!" >
+| < COMMA : "," >
+| < QUESTION_MARK : "?" >
+| < AND : "&&" >
+| < OR : "||" >
+}
+
+TOKEN :
+{
+  < COMPARE :
+    ">"
+  | ">="
+  | "=="
+  | "<"
+  | "<=" >
+| < BOOL :
+    "&&"
+  | "||" >
+}
+
+TOKEN :
+{
+  < IF : "if" >
+| < ELSE : "else" >
+| < ELIF : "elif" >
+| < PRINT : "print" >
+| < CLASS : "class" >
+| < DEF : "def" >
+| < WHILE : "while" >
+| < FOR : "for" >
+| < IN : "in" >
+| < RANGE : "range" >
+| < LEN : "len" >
+| < LPARENT : "(" >
+| < RPARENT : ")" >
+| < LBRACE : "{" >
+| < RBRACE : "}" >
+| < LARRAY : "[" >
+| < RARRAY : "]" >
+| < PREVIOUS : "$" >
+}
+
+TOKEN :
+{
+  < DIGITS : ([ "0"-"9" ])+ >
+| < NUMBER :
+    < DIGITS > "." < DIGITS >
+  | < DIGITS > "."
+  | "." < DIGITS > >	
+| < #LETTER :
+    [ "A"-"Z" ]
+  | [ "a"-"z" ] >
+| < VARIABLE :
+    (
+      < LETTER >
+    | "_"
+    )+
+    (
+      < LETTER >
+    | < DIGITS >
+    | "_"
+    )* >
+| < STRING :	
+    (
+      "\"" (~[ "\"" ])* "\""
+    )
+  |
+    (
+      "\'" (~[ "\"" ])* "\'"
+    ) >
+}
+
+void Start() :
+{
+  String output = "";
+}
+{
+  (
+    LOOKAHEAD(3)
+    
+    // Check the sentence's type one by one
+    output = print()
+    {
+      System.out.println(output);
+    }
+  | output = boolOperate() 
+    {
+      System.out.println(output);
+    }
+  | output = compareStatement() 
+    {
+      System.out.println(output);
+    }
+  | output = calculator() 
+    {
+      System.out.println(output);
+    }
+  | ifElseStatement() 
+  | forStatement() 
+  | assignment() 
+  )+
+  // When user type 'enter' several times, it just would add new line, not exit  
+  (< EOL >)*
+  // Only when ';' is inputed, then exit the code 
+  ";"
+}
+
+// Example: 1+1, True, 1.1+(2-1)/1
+String calculator() throws NumberFormatException :
+{
+  double previousValue = 0.0;
+  Token token_j = null;
+}
+{
+  // When the token is "True" or "False", then return as it is
+  token_j = < TRUE >
+  {
+    return "True";
+  }
+| token_j = < FALSE >
+  {
+    return "False";
+  }
+|
+// If the token is formula calculate it
+  (
+    previousValue = Expression(previousValue)
+    {
+      return Double.toString(previousValue);
+    }
+  )+
+}
+
+// Example: 1+1, 2/4+12
+double Expression(double previousValue) throws NumberFormatException :
+{
+  double i;
+  double value;
+}
+{
+  value = Term(previousValue)
+  (
+    < PLUS > 
+    i = Term(previousValue)
+    {
+      value += i;
+    }
+  | 
+    < MINUS > 
+    i = Term(previousValue)
+    {
+      value -= i;
+    }
+  )*
+  {
+    return value;
+  }
+}
+
+// Example: 12*12, 12/5
+double Term(double previousValue) throws NumberFormatException :
+{
+  double i;
+  double value;
+}
+{
+  value = Primary(previousValue)
+  (
+    < MULTIPLY > 
+    i = Primary(previousValue)
+    {
+      value *= i;
+    }
+  | 
+    < DIVIDE > 
+    i = Primary(previousValue)
+    {
+      value /= i;
+    }
+  )*
+  {
+    return value;
+  }
+}
+
+// Example: (12-4), 12, a, -12, 5!
+double Primary(double previousValue) throws NumberFormatException :
+{
+  Token t = null;
+  double d;
+}
+{
+  // Digits, Factorial
+  t = < DIGITS > { d=Double.parseDouble(t.image); }
+  (< NOT > {int core=1;for(int i=1;i<=d;i++) core=core*i;d=core;})*    
+  {
+    return d;
+  }
+|
+  // Double
+  t = < NUMBER >
+  {
+    return Double.parseDouble(t.image);
+  }
+| // Previous value ($)
+  t = < PREVIOUS >
+  {
+    return previousValue;
+  }
+| // Expression inside parenthesis
+  t = < LPARENT > d = Expression(previousValue) < RPARENT >
+  {
+    return d;
+  }
+| // Minus value
+  t = < MINUS > d = Primary(previousValue)
+  {
+    return - d;
+  }
+| // Variable
+  t = < VARIABLE >
+  {
+    return Double.parseDouble(SymbolMap.get(t.image));
+  }
+}
+
+/* Example:
+ * If 12/3==4: {
+ * print "True"
+ * } else: {
+ * print "False"
+ * };
+ */ 
+void ifElseStatement() :
+{
+  boolean bool = false;
+  double i = 0.0;
+  String value = "";
+}
+{
+  < IF > 
+  bool = conditionStatement() 
+  < COLON > < LBRACE > < EOL >
+  (
+    value = print()	
+    {
+      if (bool == true)
+      {
+        System.out.println(value);
+      }
+    }
+    < EOL >
+  )+
+  < RBRACE >
+  (
+    (
+      < ELIF > 
+      bool = conditionStatement() 
+      < COLON > < LBRACE > < EOL >			
+      (
+        value = print()
+        {
+          if (bool == true)
+          {
+            System.out.println(value);
+          }
+        }
+        < EOL >
+      )+
+      < RBRACE >
+    )?
+    < ELSE > < COLON > < LBRACE > < EOL >		
+    (
+      value = print()
+      {
+        if (bool == false)
+        {
+          System.out.println(value);
+        }
+      }
+      < EOL >
+    )+		
+    < RBRACE >
+  )?
+}
+
+/* Example:
+ * for i in range(1, 10):{
+ * print "Hello"
+ * };
+ */ 
+void forStatement() :
+{
+  String value = "";
+  Token num1 = null;
+  Token num2 = null;
+}
+{
+  < FOR > < VARIABLE > < IN > < RANGE > < LPARENT > 
+  num1 = < DIGITS > 
+  < COMMA > 
+  num2 = < DIGITS > 
+  < RPARENT > < COLON > < LBRACE > < EOL >
+  (
+    //	  	(	    
+    value = print()
+    {
+      for (int i = Integer.parseInt(num1.image); i < Integer.parseInt(num2.image); i++)
+      {
+        System.out.println(value);
+      }									
+    }
+    < EOL >
+  )+
+  < RBRACE >
+}
+
+// Example:
+// 12-1==11&&False, 1==1 && 12>10 || 1>3
+String boolOperate() :
+{
+  String t = "";
+  String i = "";
+  String j = "";
+  Token token_j = null;
+}
+{
+  i = compareStatement()		
+  (	
+    t = bool_symbol() 
+    j = compareStatement()
+    {
+      if (t.equals("&&"))
+      {
+        i = Boolean.toString(Boolean.parseBoolean(i) && Boolean.parseBoolean(j));
+      }
+      else if (t.equals("||"))
+      {
+        i = Boolean.toString(Boolean.parseBoolean(i) || Boolean.parseBoolean(j));
+      }
+    }
+  )*	
+  {	
+    return i;
+  }
+}
+
+// Example:
+// 12>10 || 1>3, 1 >= 0
+String compareStatement() :
+{
+  String t = "";
+  String i = "";
+  String j = "";
+  Token token_i = null;
+  Token token_j = null;
+}
+{
+  i = calculator()
+  (	
+    t = comparison_symbol() 
+    j = calculator()
+    {
+      if (t.equals("<"))
+      {
+        i = Boolean.toString(Double.parseDouble(i) < Double.parseDouble(j));
+      }
+      else if (t.equals("=="))
+      {
+        i = Boolean.toString(Double.parseDouble(i) == Double.parseDouble(j));
+      }
+      else if (t.equals(">"))
+      {
+        i = Boolean.toString(Double.parseDouble(i) > Double.parseDouble(j));
+      }
+      else if (t.equals(">="))
+      {
+        i = Boolean.toString(Double.parseDouble(i) >= Double.parseDouble(j));
+      }
+      else if (t.equals("<="))
+      {
+        i = Boolean.toString(Double.parseDouble(i) <= Double.parseDouble(j));
+      }
+    }
+  )*	
+  {	
+    return i;
+  }
+}
+
+// Bool operator symbol map
+String bool_symbol() :
+{
+  String symbol = "";
+}
+{
+  < AND >
+  {
+    symbol = "&&";
+    return symbol;
+  }
+| < OR >
+  {
+    symbol = "||";
+    return symbol;
+  }
+}
+
+// Compare operator symbol map
+String comparison_symbol() :
+{
+  String symbol = "";
+}
+{
+  < BIGGER >
+  {
+    symbol = ">";
+    return symbol;
+  }
+| < EEQUALS >
+  {
+    symbol = "==";
+    return symbol;
+  }
+| < SMALLER >
+  {
+    symbol = "<";
+    return symbol;
+  }
+| < MORE_EQUAL >
+  {
+    symbol = ">=";
+    return symbol;
+  }
+| < LESS_EQUAL >
+  {
+    symbol = "<=";
+    return symbol;
+  }
+}
+
+// Example:
+// True, 1>2, a>b || b<c
+boolean conditionStatement() :
+{
+  String value;
+  boolean bool;
+}
+{
+  (
+    LOOKAHEAD(3)
+    < FALSE >
+    {
+      return false;
+    }
+  | < TRUE >
+    {
+      return true;
+    }
+  | value = boolOperate()
+    {
+      return Boolean.parseBoolean(value);
+    }
+  )
+}
+
+// Example:
+// Print "Hello", Print 12+12, Print a
+String print() :
+{
+  String value = "";
+  Token t;
+}
+{	
+  < PRINT >
+  (
+    LOOKAHEAD(3)
+    t = < STRING >
+    {
+      value = t.image;
+      return value;
+    }
+  | t = < VARIABLE >
+    {
+      value = SymbolMap.get(t.image);
+      return value;
+    }
+  | value = boolOperate()
+    {
+      return value;
+    }
+  )
+}
+
+// Example:
+// a=1, a=1+1
+void assignment() :
+{
+  Token variable_name = null;
+  String variable_value = "";
+  Token variable_value2 = null;
+}
+{
+  variable_name = < VARIABLE > 
+  < EQUALS >
+  (	
+    LOOKAHEAD(10)
+    variable_value2 = < STRING >
+    {
+      variable_value = variable_value2.image;
+    }
+  | variable_value = calculator()
+  )
+  {	
+    SymbolMap.put(variable_name.image, variable_value);
+    //	  	System.out.println("variable_name:"+variable_name.image);
+    //	  	System.out.println("variable_value:"+SymbolMap.get(variable_name.image));
+  }
+}
